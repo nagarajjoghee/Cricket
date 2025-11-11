@@ -55,6 +55,9 @@
                         <ellipse cx="50" cy="52" rx="7" ry="4" fill="#000"/>
                     </svg>
                 </div>
+                <div class="header-image">
+                    <img src="https://source.unsplash.com/collection/1189605/140x140" alt="Cricket action">
+                </div>
                 <div class="header-text">
                     <h1>Hopkinton Cheetahs</h1>
                     <p class="subtitle">NECA Tournament Management</p>
@@ -102,6 +105,24 @@
                 <section class="summary-section">
                     <h2>Quick Summary</h2>
                     <div id="dashboardSummary"></div>
+                </section>
+                <section class="section">
+                    <h2>Total Matches Played</h2>
+                    <div class="table-container">
+                        <table class="data-table" id="matchesPlayedTable">
+                            <thead>
+                                <tr>
+                                    <th>Player</th>
+                                    <th>Matches Played</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="2" style="text-align: center; padding: 20px;">No data yet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </section>
             </div>
 
@@ -177,9 +198,8 @@
                     <div class="table-container">
                         <table class="data-table availability-table">
                             <thead>
-                                <tr>
+                                <tr id="availabilityHeaderRow">
                                     <th>Player</th>
-                                    <th id="availabilityGamesHeader">Games</th>
                                 </tr>
                             </thead>
                             <tbody id="availabilityTableBody">
@@ -237,7 +257,7 @@
                                     <th>Player</th>
                                     <th>Games Played</th>
                                     <th>Base Payment ($15/game)</th>
-                                    <th>Refreshment Credit</th>
+                                    <th>Refreshments Paid</th>
                                     <th>Final Amount</th>
                                 </tr>
                             </thead>

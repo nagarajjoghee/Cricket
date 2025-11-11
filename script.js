@@ -270,6 +270,37 @@ function loadDashboard() {
             </div>
         </div>
     `;
+    
+    renderMatchesPlayedTable(payments);
+}
+
+function renderMatchesPlayedTable(payments) {
+    const tbody = document.querySelector('#matchesPlayedTable tbody');
+    if (!tbody) {
+        return;
+    }
+    
+    if (payments.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" style="text-align: center; padding: 20px;">No players added yet</td></tr>';
+        return;
+    }
+    
+    const sorted = [...payments].sort((a, b) => {
+        if (b.gamesPlayed !== a.gamesPlayed) {
+            return b.gamesPlayed - a.gamesPlayed;
+        }
+        return a.playerName.localeCompare(b.playerName);
+    });
+    
+    tbody.innerHTML = '';
+    sorted.forEach(player => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${player.playerName}</td>
+            <td>${player.gamesPlayed}</td>
+        `;
+        tbody.appendChild(row);
+    });
 }
 
 // Player Management
@@ -454,8 +485,6 @@ function deleteGame(id) {
     if (confirm('Are you sure you want to delete this game?')) {
         const data = getData();
         data.games = data.games.filter(g => g.id !== id);
-        // Also remove availability entries for this game
-        data.availability = data.availability.filter(a => a.gameId !== id);
         saveData(data);
         showNotification('Game deleted!', 'success');
         loadGames();
@@ -526,82 +555,90 @@ function closeModal() {
 // Availability
 function loadAvailability() {
     const data = getData();
-    const yearData = getYearData(currentYear);
     const tbody = document.getElementById('availabilityTableBody');
+    const headerRow = document.getElementById('availabilityHeaderRow');
     tbody.innerHTML = '';
     
+    if (!headerRow) {
+        return;
+    }
+    
     if (data.players.length === 0) {
+        headerRow.innerHTML = '<th>Player</th>';
         tbody.innerHTML = '<tr><td colspan="2" style="text-align: center; padding: 20px;">No players added yet</td></tr>';
         return;
     }
     
-    // Get upcoming games (future dates)
-    const today = new Date().toISOString().split('T')[0];
-    const upcomingGames = yearData.games
-        .filter(g => g.date >= today)
-        .sort((a, b) => new Date(a.date) - new Date(b.date));
-    
-    // Update header
-    const header = document.getElementById('availabilityGamesHeader');
-    if (upcomingGames.length === 0) {
-        header.textContent = 'Games (No upcoming games)';
-    } else {
-        header.textContent = `Games (${upcomingGames.length} upcoming)`;
+    // Clean up legacy availability entries that were game-based
+    const filteredAvailability = data.availability.filter(a => a.date);
+    if (filteredAvailability.length !== data.availability.length) {
+        data.availability = filteredAvailability;
+        saveData(data);
     }
+    
+    const weekDates = getUpcomingWeekDates();
+    
+    headerRow.innerHTML = '<th>Player</th>' + weekDates.map(date => `<th>${formatWeekDate(date)}</th>`).join('');
     
     data.players.forEach(player => {
         const row = document.createElement('tr');
-        const cells = [document.createElement('td')];
-        cells[0].textContent = player.name;
+        const nameCell = document.createElement('td');
+        nameCell.textContent = player.name;
+        row.appendChild(nameCell);
         
-        upcomingGames.forEach(game => {
+        weekDates.forEach(date => {
             const cell = document.createElement('td');
-            const availability = getAvailability(player.id, game.id);
-            const status = availability ? (availability.available ? 'available' : 'unavailable') : 'not-set';
-            const statusText = availability ? (availability.available ? 'Yes' : 'No') : '-';
+            const availability = getAvailability(player.id, date);
+            let statusClass = 'not-set';
+            let statusText = '-';
+            
+            if (availability) {
+                if (availability.available) {
+                    statusClass = 'available';
+                    statusText = 'Yes';
+                } else {
+                    statusClass = 'unavailable';
+                    statusText = 'No';
+                }
+            }
             
             cell.innerHTML = `
-                <div class="availability-cell ${status}" onclick="toggleAvailability('${player.id}', '${game.id}')" title="${formatDate(game.date)}">
+                <div class="availability-cell ${statusClass}" onclick="toggleAvailability('${player.id}', '${date}')">
                     ${statusText}
                 </div>
             `;
-            cells.push(cell);
+            row.appendChild(cell);
         });
         
-        if (upcomingGames.length === 0) {
-            const cell = document.createElement('td');
-            cell.textContent = 'No upcoming games';
-            cell.colSpan = 100;
-            cells.push(cell);
-        }
-        
-        row.append(...cells);
         tbody.appendChild(row);
     });
 }
 
-function toggleAvailability(playerId, gameId) {
+function toggleAvailability(playerId, date) {
     const data = getData();
-    let availability = data.availability.find(a => a.playerId === playerId && a.gameId === gameId);
+    let availability = data.availability.find(a => a.playerId === playerId && a.date === date);
     
     if (!availability) {
         availability = {
+            id: generateId(),
             playerId,
-            gameId,
+            date,
             available: true
         };
         data.availability.push(availability);
+    } else if (availability.available) {
+        availability.available = false;
     } else {
-        availability.available = !availability.available;
+        data.availability = data.availability.filter(a => !(a.playerId === playerId && a.date === date));
     }
     
     saveData(data);
     loadAvailability();
 }
 
-function getAvailability(playerId, gameId) {
+function getAvailability(playerId, date) {
     const data = getData();
-    return data.availability.find(a => a.playerId === playerId && a.gameId === gameId);
+    return data.availability.find(a => a.playerId === playerId && a.date === date);
 }
 
 // Refreshments
@@ -705,12 +742,11 @@ function loadPayments() {
     payments.forEach(payment => {
         const row = document.createElement('tr');
         const finalColor = payment.finalAmount >= 0 ? '#28a745' : '#dc3545';
-        const totalCredit = payment.refreshmentCredit + payment.playerRefreshments;
         row.innerHTML = `
             <td>${payment.playerName}</td>
             <td>${payment.gamesPlayed}</td>
             <td>$${payment.basePayment.toFixed(2)}</td>
-            <td>$${totalCredit.toFixed(2)}<br><small style="opacity: 0.7;">(Share: $${payment.refreshmentCredit.toFixed(2)}, Paid: $${payment.playerRefreshments.toFixed(2)})</small></td>
+            <td>$${payment.playerRefreshments.toFixed(2)}</td>
             <td style="color: ${finalColor}; font-weight: bold;">$${payment.finalAmount.toFixed(2)}</td>
         `;
         tbody.appendChild(row);
@@ -721,44 +757,29 @@ function calculatePayments(year) {
     const data = getData();
     const yearData = getYearData(year);
     
-    // Calculate total games played by all players
-    let totalGamesPlayed = 0;
     const playerGamesMap = {};
     
     yearData.games.forEach(game => {
         const playersPlayed = game.playersPlayed || [];
         playersPlayed.forEach(playerId => {
             playerGamesMap[playerId] = (playerGamesMap[playerId] || 0) + 1;
-            totalGamesPlayed++;
         });
     });
-    
-    // Calculate total refreshments
-    const totalRefreshments = yearData.refreshments.reduce((sum, r) => sum + r.amount, 0);
     
     // Calculate payments for each player
     const payments = data.players.map(player => {
         const gamesPlayed = playerGamesMap[player.id] || 0;
         const basePayment = gamesPlayed * 15;
-        
-        // Prorate refreshments based on games played
-        let refreshmentCredit = 0;
-        if (totalGamesPlayed > 0 && gamesPlayed > 0) {
-            refreshmentCredit = (gamesPlayed / totalGamesPlayed) * totalRefreshments;
-        }
-        
-        // Also subtract what the player paid
         const playerRefreshments = yearData.refreshments
             .filter(r => r.playerId === player.id)
             .reduce((sum, r) => sum + r.amount, 0);
         
-        const finalAmount = basePayment - refreshmentCredit - playerRefreshments;
+        const finalAmount = basePayment - playerRefreshments;
         
         return {
             playerName: player.name,
             gamesPlayed,
             basePayment,
-            refreshmentCredit,
             playerRefreshments,
             finalAmount
         };
@@ -794,6 +815,29 @@ function formatDate(dateString) {
         year: 'numeric', 
         month: 'short', 
         day: 'numeric' 
+    });
+}
+
+function getUpcomingWeekDates() {
+    const dates = [];
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    
+    for (let i = 0; i < 7; i++) {
+        const date = new Date(start);
+        date.setDate(start.getDate() + i);
+        dates.push(date.toISOString().split('T')[0]);
+    }
+    
+    return dates;
+}
+
+function formatWeekDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric'
     });
 }
 
